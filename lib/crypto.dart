@@ -1,38 +1,72 @@
 import 'dart:typed_data';
 import 'dart:convert';
-import 'package:tweetnacl/tweetnacl.dart';
+import 'dart:math';
+import 'package:pointycastle/export.dart';
 
 class Crypto {
   late Uint8List publicKey;
   late Uint8List secretKey;
 
   Crypto() {
-    final kp = Box.keyPair();
-    publicKey = kp.publicKey;
-    secretKey = kp.secretKey;
+    final params = ECKeyGeneratorParameters(ECCurve_prime256v1());
+    final random = FortunaRandom()
+      ..seed(KeyParameter(_randomBytes(32)));
+    final gen = ECKeyGenerator()..init(ParametersWithRandom(params, random));
+    final pair = gen.generateKeyPair();
+    final priv = pair.privateKey as ECPrivateKey;
+    final pub  = pair.publicKey as ECPublicKey;
+    secretKey = _bigIntToBytes(priv.d!, 32);
+    publicKey = pub.Q!.getEncoded(false); // uncompressed
   }
 
   String exportPublicKey() => base64Encode(publicKey);
 
   static Uint8List importPublicKey(String b64) => base64Decode(b64);
 
+  Uint8List _deriveShared(Uint8List theirPublicKey) {
+    final curve = ECCurve_prime256v1();
+    final Q = curve.curve.decodePoint(theirPublicKey)!;
+    final d = _bytesToBigInt(secretKey);
+    final shared = (Q * d)!;
+    return _bigIntToBytes(shared.x!.toBigInteger()!, 32);
+  }
+
   String encrypt(String text, Uint8List theirPublicKey) {
-    final nonce = TweetNaClExt.randombytes(Box.nonceLength);
-    final box = Box(theirPublicKey, secretKey);
-    final msg = Uint8List.fromList(utf8.encode(text));
-    final ct = box.box(null, msg, nonce)!;
-    final out = Uint8List(nonce.length + ct.length);
-    out.setAll(0, nonce);
-    out.setAll(nonce.length, ct);
+    final sharedKey = _deriveShared(theirPublicKey);
+    final iv  = _randomBytes(12);
+    final key = KeyParameter(sharedKey);
+    final params = AEADParameters(key, 128, iv, Uint8List(0));
+    final cipher = GCMBlockCipher(AESEngine())..init(true, params);
+    final input = Uint8List.fromList(utf8.encode(text));
+    final ct = cipher.process(input);
+    final out = Uint8List(iv.length + ct.length);
+    out.setAll(0, iv);
+    out.setAll(iv.length, ct);
     return base64Encode(out);
   }
 
   String decrypt(String b64, Uint8List theirPublicKey) {
+    final sharedKey = _deriveShared(theirPublicKey);
     final data = base64Decode(b64);
-    final nonce = data.sublist(0, Box.nonceLength);
-    final ct = data.sublist(Box.nonceLength);
-    final box = Box(theirPublicKey, secretKey);
-    final pt = box.open(null, ct, nonce)!;
+    final iv = data.sublist(0, 12);
+    final ct = data.sublist(12);
+    final key = KeyParameter(sharedKey);
+    final params = AEADParameters(key, 128, iv, Uint8List(0));
+    final cipher = GCMBlockCipher(AESEngine())..init(false, params);
+    final pt = cipher.process(ct);
     return utf8.decode(pt);
   }
+
+  static Uint8List _randomBytes(int len) {
+    final rng = Random.secure();
+    return Uint8List.fromList(List.generate(len, (_) => rng.nextInt(256)));
+  }
+
+  static Uint8List _bigIntToBytes(BigInt n, int len) {
+    final hex = n.toRadixString(16).padLeft(len * 2, '0');
+    return Uint8List.fromList(List.generate(len, (i) => int.parse(hex.substring(i*2, i*2+2), radix: 16)));
+  }
+
+  static BigInt _bytesToBigInt(Uint8List bytes) =>
+    bytes.fold(BigInt.zero, (acc, b) => (acc << 8) | BigInt.from(b));
 }
