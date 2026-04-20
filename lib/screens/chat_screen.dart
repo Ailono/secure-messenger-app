@@ -119,6 +119,35 @@ class _ChatScreenState extends State<ChatScreen> {
         _decryptAndShow(msgs);
       } else {
         _pendingHistory.addAll(msgs);
+        // Try fetching stored public key for offline peer
+        await _fetchPeerPublicKey();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fetchPeerPublicKey() async {
+    try {
+      final client = HttpClient();
+      final uri = Uri.parse(
+        'https://${widget.server}/pubkey/${Uri.encodeComponent(widget.peer)}'
+        '?token=${Uri.encodeComponent(widget.token)}');
+      final req  = await client.getUrl(uri);
+      final resp = await req.close();
+      if (resp.statusCode != 200) return;
+      final body = await resp.transform(utf8.decoder).join();
+      client.close();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      final pubkey = data['pubkey'] as String?;
+      if (pubkey != null) {
+        _peerPublicKey = base64Decode(pubkey);
+        if (_pendingHistory.isNotEmpty) {
+          _decryptAndShow(List.from(_pendingHistory));
+          _pendingHistory.clear();
+        }
+        if (mounted) setState(() {
+          _status = '🔒 Зашифровано (E2E)';
+          _statusColor = Colors.green;
+        });
       }
     } catch (_) {}
   }
