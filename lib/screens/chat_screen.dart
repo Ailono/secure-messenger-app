@@ -9,7 +9,10 @@ import '../crypto.dart';
 class Message {
   final String sender, text;
   final DateTime time;
-  Message(this.sender, this.text, {DateTime? time}) : time = time ?? DateTime.now();
+  final int? msgId;
+  String status; // 'sent', 'delivered', 'read'
+  Message(this.sender, this.text, {DateTime? time, this.msgId, this.status = 'sent'})
+      : time = time ?? DateTime.now();
 }
 
 class ChatScreen extends StatefulWidget {
@@ -168,13 +171,33 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       if (!_keySent) _sendKeyExchange();
 
+    } else if (type == 'status') {
+      final id = pkt['id'] as int?;
+      final status = pkt['status'] as String? ?? 'sent';
+      if (id != null) {
+        setState(() {
+          for (final m in _messages) {
+            if (m.msgId == id) { m.status = status; break; }
+          }
+        });
+      }
+    } else if (type == 'status_bulk') {
+      final status = pkt['status'] as String? ?? 'read';
+      setState(() {
+        for (final m in _messages) {
+          if (m.sender == widget.username) m.status = status;
+        }
+      });
     } else if (type == 'message') {
       if (_peerPublicKey == null) return;
       try {
         final text = widget.crypto.decrypt(pkt['data'] as String, _peerPublicKey!);
-        setState(() => _messages.add(Message(pkt['from'] as String, text)));
+        setState(() => _messages.add(Message(pkt['from'] as String, text,
+            msgId: pkt['id'] as int?)));
         _scrollToBottom();
         widget.onConversationUpdated?.call();
+        // Send read receipt
+        widget.channel.sink.add(jsonEncode({'type': 'read', 'peer': widget.peer}));
       } catch (_) {
         setState(() => _messages.add(Message('⚠️', 'Ошибка расшифровки')));
       }
@@ -187,8 +210,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _peerPublicKey == null) return;
     final data = widget.crypto.encrypt(text, _peerPublicKey!);
-    widget.channel.sink.add(jsonEncode({'type': 'message', 'to': widget.peer, 'data': data}));
-    setState(() => _messages.add(Message(widget.username, text)));
+    final tmpId = DateTime.now().millisecondsSinceEpoch;
+    widget.channel.sink.add(jsonEncode({
+      'type': 'message', 'to': widget.peer, 'data': data, 'tmp_id': tmpId,
+    }));
+    setState(() => _messages.add(Message(widget.username, text,
+        msgId: tmpId, status: 'sent')));
     _inputCtrl.clear();
     _scrollToBottom();
     widget.onConversationUpdated?.call();
@@ -251,6 +278,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildBubble(Message msg) {
     final isMine = msg.sender == widget.username;
+    Widget statusIcon = const SizedBox.shrink();
+    if (isMine) {
+      if (msg.status == 'read') {
+        statusIcon = const Text('✓✓', style: TextStyle(color: Color(0xFF5B9BD5), fontSize: 10));
+      } else if (msg.status == 'delivered') {
+        statusIcon = const Text('✓✓', style: TextStyle(color: Colors.grey, fontSize: 10));
+      } else {
+        statusIcon = const Text('✓', style: TextStyle(color: Colors.grey, fontSize: 10));
+      }
+    }
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -267,8 +304,12 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(msg.text, style: const TextStyle(color: Colors.white, fontSize: 14)),
-          Text('${msg.time.hour.toString().padLeft(2,'0')}:${msg.time.minute.toString().padLeft(2,'0')}',
-            style: const TextStyle(color: Colors.grey, fontSize: 10)),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Text('${msg.time.hour.toString().padLeft(2,'0')}:${msg.time.minute.toString().padLeft(2,'0')}',
+              style: const TextStyle(color: Colors.grey, fontSize: 10)),
+            const SizedBox(width: 4),
+            statusIcon,
+          ]),
         ]),
       ),
     );

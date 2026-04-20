@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../crypto.dart';
 import 'chat_screen.dart';
 
@@ -33,6 +34,22 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
     _connect();
     _loadPeople();
     _loadConversations();
+    _registerFcmToken();
+  }
+
+  Future<void> _registerFcmToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null) return;
+      final uri = Uri.parse(
+        'https://${widget.server}/fcm_token?token=${Uri.encodeComponent(widget.token)}');
+      final client = HttpClient();
+      final req = await client.postUrl(uri);
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode({'fcm_token': token}));
+      await req.close();
+      client.close();
+    } catch (_) {}
   }
 
   Future<Map<String, dynamic>?> _getJson(String path) async {
