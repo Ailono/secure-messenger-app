@@ -1,0 +1,18 @@
+android {
+    namespace "com.securemessenger.app"
+    compileSdkVersion 34
+
+    defaultConfig {
+        applicationId "com.securemessenger.app"
+        minSdkVersion 21
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
