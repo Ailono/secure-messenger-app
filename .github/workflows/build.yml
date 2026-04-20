@@ -20,8 +20,18 @@ jobs:
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: secure-messenger.apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Commit APK to repository
+        run: |
+          mkdir -p releases
+          cp build/app/outputs/flutter-apk/app-release.apk releases/secure-messenger.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add releases/secure-messenger.apk
+          git diff --cached --quiet || git commit -m "Update APK [skip ci]"
+          git push
