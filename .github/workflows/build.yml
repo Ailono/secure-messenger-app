@@ -18,7 +18,7 @@ jobs:
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release --no-tree-shake-icons
+        run: flutter build apk --release --no-tree-shake-icons --dart-define=CERT_PIN=${{ secrets.CERT_PIN }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
