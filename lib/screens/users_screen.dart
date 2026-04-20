@@ -5,8 +5,8 @@ import '../crypto.dart';
 import 'chat_screen.dart';
 
 class UsersScreen extends StatefulWidget {
-  final String server, username;
-  const UsersScreen({super.key, required this.server, required this.username});
+  final String server, username, token;
+  const UsersScreen({super.key, required this.server, required this.username, required this.token});
   @override
   State<UsersScreen> createState() => _UsersScreenState();
 }
@@ -27,12 +27,12 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 
   void _connect() {
-    final uri = Uri.parse('ws://${widget.server}/ws');
+    // WSS with JWT token — server rejects unauthorized connections
+    final uri = Uri.parse('wss://${widget.server}/ws?token=${Uri.encodeComponent(widget.token)}');
     _channel = WebSocketChannel.connect(uri);
     _channel.stream.listen(_onPacket, onError: (_) {
       setState(() => _connected = false);
     });
-    _channel.sink.add(jsonEncode({'type': 'register', 'username': widget.username}));
   }
 
   void _onPacket(dynamic raw) {

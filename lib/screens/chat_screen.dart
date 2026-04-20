@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:crypto/crypto.dart' as crypto_pkg;
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../crypto.dart';
@@ -31,6 +32,36 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _keySent = false;
   String _status = '🔑 Обмен ключами...';
   Color _statusColor = const Color(0xFFF0A500);
+  String _fingerprint = '';
+
+  String _calcFingerprint(Uint8List pubKey) {
+    final hash = crypto_pkg.sha256.convert(pubKey).bytes;
+    return List.generate(8, (i) => hash[i].toRadixString(16).padLeft(2, '0'))
+        .join(':')
+        .toUpperCase();
+  }
+
+  void _showFingerprint() {
+    if (_peerPublicKey == null) return;
+    final myFp   = _calcFingerprint(widget.crypto.publicKey);
+    final peerFp = _calcFingerprint(_peerPublicKey!);
+    showDialog(context: context, builder: (_) => AlertDialog(
+      backgroundColor: const Color(0xFF1E2D3D),
+      title: const Text('🔑 Fingerprint', style: TextStyle(color: Colors.white)),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Ваш ключ:', style: TextStyle(color: Colors.grey, fontSize: 12)),
+        Text(myFp, style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 13)),
+        const SizedBox(height: 12),
+        Text('Ключ ${widget.peer}:', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        Text(peerFp, style: const TextStyle(color: Color(0xFF4CAF50), fontFamily: 'monospace', fontSize: 13)),
+        const SizedBox(height: 12),
+        const Text('Сравните ключ собеседника по другому каналу (голос/встреча). Если совпадает — MITM исключён.',
+          style: TextStyle(color: Colors.grey, fontSize: 11)),
+      ]),
+      actions: [TextButton(onPressed: () => Navigator.pop(context),
+        child: const Text('OK', style: TextStyle(color: Color(0xFF5B9BD5))))],
+    ));
+  }
 
   @override
   void initState() {
@@ -47,9 +78,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _sendKeyExchange() {
     _keySent = true;
+    // 'from' is NOT sent — server sets it from the authenticated token
     widget.channel.sink.add(jsonEncode({
       'type': 'key_exchange',
-      'from': widget.username,
       'to': widget.peer,
       'pubkey': widget.crypto.exportPublicKey(),
     }));
@@ -59,7 +90,12 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!mounted) return;
     if (pkt['type'] == 'key_exchange') {
       _peerPublicKey = base64Decode(pkt['pubkey'] as String);
-      setState(() { _status = '🔒 Зашифровано (E2E)'; _statusColor = Colors.green; });
+      final fp = _calcFingerprint(_peerPublicKey!);
+      setState(() {
+        _status = '🔒 Зашифровано (E2E)';
+        _statusColor = Colors.green;
+        _fingerprint = fp;
+      });
       if (!_keySent) _sendKeyExchange();
     } else if (pkt['type'] == 'message') {
       if (_peerPublicKey == null) return;
@@ -75,7 +111,8 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _inputCtrl.text.trim();
     if (text.isEmpty || _peerPublicKey == null) return;
     final data = widget.crypto.encrypt(text, _peerPublicKey!);
-    widget.channel.sink.add(jsonEncode({'type': 'message', 'from': widget.username, 'to': widget.peer, 'data': data}));
+    // 'from' is NOT sent — server enforces it from JWT
+    widget.channel.sink.add(jsonEncode({'type': 'message', 'to': widget.peer, 'data': data}));
     setState(() => _messages.add(Message(widget.username, text)));
     _inputCtrl.clear();
     _scrollToBottom();
@@ -110,10 +147,16 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Text(widget.peer[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(width: 10),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(widget.peer, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
             Text(_status, style: TextStyle(fontSize: 11, color: _statusColor)),
-          ]),
+            if (_fingerprint.isNotEmpty)
+              GestureDetector(
+                onTap: _showFingerprint,
+                child: Text('🔑 $_fingerprint',
+                  style: const TextStyle(fontSize: 9, color: Color(0xFF555555), fontFamily: 'monospace')),
+              ),
+          ])),
         ]),
       ),
       body: Column(children: [

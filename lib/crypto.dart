@@ -28,7 +28,25 @@ class Crypto {
     final Q = curve.curve.decodePoint(theirPublicKey)!;
     final d = _bytesToBigInt(secretKey);
     final shared = (Q * d)!;
-    return _bigIntToBytes(shared.x!.toBigInteger()!, 32);
+    final rawSecret = _bigIntToBytes(shared.x!.toBigInteger()!, 32);
+    // HKDF-SHA256 to derive proper AES key from raw ECDH output
+    return _hkdf(rawSecret, info: utf8.encode('secure_messenger_v1'));
+  }
+
+  static Uint8List _hkdf(Uint8List ikm, {required List<int> info, int length = 32}) {
+    // HKDF extract: PRK = HMAC-SHA256(salt=zeros, IKM)
+    final salt = Uint8List(32);
+    final hmacExtract = HMac(SHA256Digest(), 64)..init(KeyParameter(salt));
+    hmacExtract.update(ikm, 0, ikm.length);
+    final prk = Uint8List(32);
+    hmacExtract.doFinal(prk, 0);
+    // HKDF expand: T(1) = HMAC-SHA256(PRK, info || 0x01)
+    final hmacExpand = HMac(SHA256Digest(), 64)..init(KeyParameter(prk));
+    hmacExpand.update(Uint8List.fromList(info), 0, info.length);
+    hmacExpand.update(Uint8List.fromList([0x01]), 0, 1);
+    final okm = Uint8List(32);
+    hmacExpand.doFinal(okm, 0);
+    return okm.sublist(0, length);
   }
 
   String encrypt(String text, Uint8List theirPublicKey) {
