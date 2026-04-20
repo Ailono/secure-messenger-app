@@ -1,6 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import '../pinned_http_client.dart';
 import 'users_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -30,17 +29,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final endpoint = isRegister ? 'register' : 'login';
-      final url = Uri.parse('https://$server/$endpoint');
-      final resp = await http.post(url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': user, 'password': pass}),
+      final url = 'https://$server/$endpoint';
+      final result = await PinnedHttpClient.postJson(
+        url, {'username': user, 'password': pass},
       );
-      final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (resp.statusCode != 200) {
-        setState(() => _error = data['error'] ?? 'Ошибка');
+      if (result.statusCode != 200) {
+        setState(() => _error = result.body['error'] ?? 'Ошибка');
         return;
       }
-      final token = data['token'] as String;
+      final token = result.body['token'] as String;
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(
         builder: (_) => UsersScreen(server: server, username: user, token: token),

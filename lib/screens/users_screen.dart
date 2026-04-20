@@ -41,7 +41,7 @@ class _UsersScreenState extends State<UsersScreen> {
       setState(() => _connected = true);
     } else if (pkt['type'] == 'users') {
       setState(() => _users = List<String>.from(pkt['users']));
-    } else if (pkt['type'] == 'key_exchange' || pkt['type'] == 'message') {
+    } else if (pkt['type'] == 'key_exchange' || pkt['type'] == 'key_ratchet' || pkt['type'] == 'message') {
       // Forward to active chat if open
       _sharedState['pending_${pkt['from']}'] ??= [];
       (_sharedState['pending_${pkt['from']}'] as List).add(pkt);

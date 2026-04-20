@@ -66,13 +66,20 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    // Register callback for incoming packets
     widget.sharedState['callback_${widget.peer}'] = _onPacket;
-    // Process any pending packets
     final pending = widget.sharedState['pending_${widget.peer}'] as List? ?? [];
     for (final pkt in pending) _onPacket(pkt);
     widget.sharedState.remove('pending_${widget.peer}');
-    // Initiate key exchange
+
+    // PFS: when crypto rotates key, send new pubkey to peer automatically
+    widget.crypto.onRatchet = (newPubKeyB64) {
+      widget.channel.sink.add(jsonEncode({
+        'type': 'key_ratchet',
+        'to': widget.peer,
+        'pubkey': newPubKeyB64,
+      }));
+    };
+
     _sendKeyExchange();
   }
 
@@ -88,22 +95,34 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onPacket(dynamic pkt) {
     if (!mounted) return;
-    if (pkt['type'] == 'key_exchange') {
+    final type = pkt['type'] as String;
+
+    if (type == 'key_exchange' || type == 'key_ratchet') {
+      // Accept new ephemeral key from peer (initial exchange or PFS rotation)
       _peerPublicKey = base64Decode(pkt['pubkey'] as String);
       final fp = _calcFingerprint(_peerPublicKey!);
       setState(() {
-        _status = '🔒 Зашифровано (E2E)';
+        _status = type == 'key_ratchet' ? '🔄 Ключ обновлён (PFS)' : '🔒 Зашифровано (E2E)';
         _statusColor = Colors.green;
         _fingerprint = fp;
       });
+      // Restore status label after ratchet notification
+      if (type == 'key_ratchet') {
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _status = '🔒 Зашифровано (E2E)');
+        });
+      }
       if (!_keySent) _sendKeyExchange();
-    } else if (pkt['type'] == 'message') {
+
+    } else if (type == 'message') {
       if (_peerPublicKey == null) return;
       try {
         final text = widget.crypto.decrypt(pkt['data'] as String, _peerPublicKey!);
         setState(() => _messages.add(Message(pkt['from'] as String, text)));
         _scrollToBottom();
-      } catch (_) {}
+      } catch (_) {
+        setState(() => _messages.add(Message('⚠️', 'Ошибка расшифровки')));
+      }
     }
   }
 
