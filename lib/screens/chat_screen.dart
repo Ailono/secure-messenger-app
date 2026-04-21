@@ -320,22 +320,53 @@ class _ChatScreenState extends State<ChatScreen> {
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: EdgeInsets.only(top: 4, bottom: 4,
-          left: isMine ? 60 : 0, right: isMine ? 0 : 60),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        margin: EdgeInsets.only(
+          top: 3, bottom: 3,
+          left: isMine ? 56 : 0,
+          right: isMine ? 0 : 56,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: isMine ? const Color(0xFF2B5278) : const Color(0xFF1E2D3D),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14), topRight: const Radius.circular(14),
-            bottomLeft: Radius.circular(isMine ? 14 : 4),
-            bottomRight: Radius.circular(isMine ? 4 : 14),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isMine
+                ? [const Color(0xFF1E3D5C), const Color(0xFF2B5278)]
+                : [const Color(0xFF1A2535), const Color(0xFF1E2D3D)],
           ),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isMine ? 18 : 4),
+            bottomRight: Radius.circular(isMine ? 4 : 18),
+          ),
+          border: Border.all(
+            color: isMine
+                ? const Color(0xFF5B9BD5).withOpacity(0.25)
+                : Colors.white.withOpacity(0.07),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text(msg.text, style: const TextStyle(color: Colors.white, fontSize: 14)),
+          Text(msg.text,
+            style: TextStyle(
+              color: isMine ? const Color(0xFFDDEEFF) : const Color(0xFFC8D8E8),
+              fontSize: 14,
+              height: 1.5,
+            )),
+          const SizedBox(height: 2),
           Row(mainAxisSize: MainAxisSize.min, children: [
-            Text('${msg.time.hour.toString().padLeft(2,'0')}:${msg.time.minute.toString().padLeft(2,'0')}',
-              style: const TextStyle(color: Colors.grey, fontSize: 10)),
+            Text(
+              '${msg.time.hour.toString().padLeft(2,'0')}:${msg.time.minute.toString().padLeft(2,'0')}',
+              style: const TextStyle(color: Color(0xFF4A6A8A), fontSize: 10),
+            ),
             const SizedBox(width: 4),
             statusIcon,
           ]),
